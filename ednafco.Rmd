@@ -109,16 +109,13 @@ taxplot %>%
   theme_bw() +
   theme(text = element_text(size = 14))
   
-ggsave("figures/fig1_taxa_monitored.png", dpi = 400, width = 6, height = 4)
+ggsave("figures/fig1_taxa_monitored2.png", dpi = 400, width = 6, height = 4)
 ```
 # increasing representation of vertebrates over time?
 ```{r}
 
 mod <- glm(vert ~ I(year-2012), data = e, family = "binomial")
 summary(mod)
-
-mod2 <- glm(metazoo ~ I(year-2012), data = e, family = "binomial")
-summary(mod2)
 
 vertplot <- data.frame(
   year =  e$year,
@@ -138,6 +135,12 @@ vertplot %>%
 
 ggsave("figures/fig2_vert_eDNA_assess_over_time.png", dpi = 400, width = 4, height = 4)
 ```
+
+# bar charts of % vertebrates and % terrestrial over time
+```{r}
+
+```
+
 
 
 
