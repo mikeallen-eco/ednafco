@@ -1,0 +1,35 @@
+# load libraries and data
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readxl)
+
+# load eDNA assessment literature data
+e <- read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "eDNA_assessment") %>%
+  filter(pdf == "y", !is.na(region))
+
+# load carbon offset project data
+p <- read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "FCO_projects") %>%
+  filter(!is.na(yearMR))
+```
+# taxa monitored
+```{r}
+etmp <- e %>% select(mammal:prokaryota) %>% as.matrix()
+etmp[etmp == "X" | etmp > 1] <- 1 # change Xs and values >1 to 1s
+etmpnum <- matrix(as.numeric(etmp), ncol = ncol(etmp))
+colnames(etmpnum) <- colnames(etmp)
+
+e.taxplot <- etmpnum %>%
+  as.data.frame() %>%
+  mutate(paperid = e$paperid,
+         group = "eDNA assessments") %>%
+  pivot_longer(cols = mammal:prokaryota)
+
+e.taxplot %>%
+  filter(value == 1) %>%
+  ggplot() +
+  geom_bar(aes(x = group, fill = name))
+```
+
+
