@@ -8,7 +8,7 @@ library(readxl)
 
 # load eDNA assessment literature data & fix formatting
 e1 <- read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "eDNA_assessment") %>%
-  filter(pdf == "y", !is.na(region))
+  filter(pdf == "y", !is.na(region), !is.na(invertebrates))
 
 etmp <- e1 %>% select(mammals:prokaryotes) %>% as.matrix()
 etmp[etmp == "X"] <- 1 # change Xs to 1s
@@ -30,7 +30,14 @@ e <- e1 %>%
          metazoo = case_when(mammals==1|birds==1|amphibians==1|reptiles==1|fish==1|invertebrates==1 ~ 1,
                                TRUE ~ 0),
          microbe = case_when(prokaryotes==1|protists==1|fungi==1 ~ 1,
-                               TRUE ~ 0))
+                               TRUE ~ 0),
+           terr = case_when(grepl(x = hab_gen, pattern = "forest") ~ 1,
+                            grepl(x = hab_gen, pattern = "terrestrial") ~ 1,
+                            hab_gen == "cave" ~ 1,
+                            hab_gen == "grassland" ~ 1,
+                          TRUE ~ 0),
+           forest = case_when(grepl(x = hab_gen, pattern = "forest") ~ 1,
+                          TRUE ~ 0))
 
 
 # load carbon offset project data & fix formatting
@@ -47,37 +54,47 @@ colnames(ptmpnum) <- colnames(ptmp)
 p <- p1 %>%
   select(-c(mammals:prokaryotes)) %>%
   bind_cols(ptmpnum) %>%
+  mutate(totn = as.numeric(camtrap) + as.numeric(formal_obs)) %>%
   rowwise() %>%
-  mutate(numtaxgroups = sum(c_across(mammals:prokaryotes))) %>%
+  mutate(numtaxgroups = sum(c_across(mammals:prokaryotes)),
+         numanimalgroups = sum(c_across(c(mammals, birds, amphibians, reptiles, fish, invertebrates)))) %>%
   ungroup()
+
+# % stats for forest carbon project reports
+sum(p$birds)/nrow(p)
+sum(p$mammals)/nrow(p)
+sum(p$reptiles)/nrow(p)
+sum(p$amphibians)/nrow(p)
+sum(p$invertebrates)/nrow(p)
+sum(p$fish)/nrow(p)
+sum(p$numanimalgroups==0)/nrow(p) # no animal monitoring
+sum(p$plants)/nrow(p) # some plant monitoring mentioned
+(sum(p$formal_obs != 0) + 2) # some plot-based animal monitoring 
+  # (including 2 camera trapping w/ no formal visual obs)
+(sum(p$formal_obs != 0)) # visual animal monitoring 
+(sum(p$camtrap != 0)) # camera trap animal monitoring 
+(sum(p$accous != 0)) # acoustic animal monitoring 
+(sum(p$DNA != 0)) # acoustic animal monitoring 
+(sum(p$traps != 0)) # acoustic animal monitoring 
+table(read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "FCO_projects")$Region)/82
+
+# % stats for eDNA assessment literature
+sum(e$birds)/nrow(e)
+sum(e$mammals)/nrow(e)
+sum(e$reptiles)/nrow(e)
+sum(e$amphibians)/nrow(e)
+sum(e$invertebrates)/nrow(e)
+sum(e$fish)/nrow(e)
+sum(e$prokaryotes)/nrow(e)
+sum(e$fungi)/nrow(e)
+sum(e$protists)/nrow(e)
+
+
 ```
 # taxa monitored
 ```{r}
 # format data for eDNA assessments
 
-e.taxplot <- etmpnum %>%
-  as.data.frame() %>%
-  mutate(paperid = e$paperid,
-         group = "eDNA assessments") %>%
-  pivot_longer(cols = mammals:prokaryotes) %>% 
-  group_by(group, name) %>%
-  mutate(num = sum(value, na.rm = T)) %>%
-  ungroup() %>%
-  mutate(name = fct_reorder(name, desc(num)))
-
-
-e.taxplot %>%
-  filter(value == 1) %>%
-  ggplot() +
-  geom_bar(aes(x = group, fill = name),
-           position = position_dodge(width = 1)) +
-  scale_y_continuous(breaks = c(), labels = c())
-
-# remove uneeded objects
-# rm(etmp, etmpnum)
-
-
-# attempt 2
 e.taxplot <- e %>%
   select(mammals:prokaryotes) %>%
   pivot_longer(cols = mammals:prokaryotes) %>% 
@@ -138,9 +155,77 @@ ggsave("figures/fig2_vert_eDNA_assess_over_time.png", dpi = 400, width = 4, heig
 
 # bar charts of % vertebrates and % terrestrial over time
 ```{r}
+# % vertebrates over time
+(vert <- e %>%
+  group_by(year) %>%
+  summarize(numvert = sum(vert),
+            totpubs = length(vert),
+            nonvert = totpubs-numvert,
+            pctvert = 100*numvert/totpubs,
+            .groups = "drop") %>%
+  filter(year > 2016) %>%
+  ggplot() +
+  geom_col(aes(x = year, y = pctvert)) +
+  geom_rect(aes(xmin = 2012.55, xmax = 2016.45, ymin = 0, ymax = 6.67), fill = "gray35") +
+  geom_text(aes(x = year, y = 0.7, label = totpubs), color = "darkgray", size = 3) +
+  geom_text(aes(x = 2014.5, y = 0.7, label = "n = 15"), color = "darkgray", size = 3) +
+  theme_bw() +
+  theme(text = element_text(size = 14)) +
+  labs(x = "", y = "% of eDNA impact assessments\ninvolving vertebrates")
+)
+
+# % terrestrial over time
+(terr <- e %>%
+  group_by(year) %>%
+  summarize(numterr = sum(terr),
+            totpubs = length(terr),
+            nonvert = totpubs-numterr,
+            pctvert = 100*numterr/totpubs,
+            .groups = "drop") %>%
+  filter(year > 2016) %>%
+  ggplot() +
+  geom_col(aes(x = year, y = pctvert)) +
+  geom_rect(aes(xmin = 2012.55, xmax = 2016.45, ymin = 0, ymax = 46.67), fill = "gray35") +
+  geom_text(aes(x = year, y = 2.4, label = totpubs), color = "darkgray", size = 3) +
+  geom_text(aes(x = 2014.5, y = 2.4, label = "n = 15"), color = "darkgray", size = 3) +
+  theme_bw() +
+  theme(text = element_text(size = 14)) +
+  labs(x = "", y = "% of eDNA impact assessments\nin terrestrial habitats")
+)
+
+gg <- gridExtra::arrangeGrob(vert, terr, ncol = 2)
+  
+plot(gg)
+
+ggsave("figures/fig3_pct_vert_terr_over_time.png", plot = gg, dpi = 400, width = 8, height = 5)
 
 ```
 
+# number of taxa
+```{r}
+
+b <- e %>%
+  select(numtaxgroups) %>%
+  mutate(type = "eDNA assessment") %>%
+  bind_rows(mutate(select(p, numtaxgroups), type = "FCO projects"))
+
+b %>%
+  # filter(numtaxgroups>0) %>%
+  ggplot() +
+  geom_boxplot(aes(x = type, y = numtaxgroups, 
+                   color = type), outlier.alpha = 0) +
+  geom_point(aes(x = jitter(as.numeric(as.factor(type)), 0.3), y = numtaxgroups,
+                 color = type), 
+             shape = 21, alpha = 0.75, size = 2.5) +
+  scale_color_manual(values = c("firebrick", "steelblue")) +
+  scale_y_continuous(limits = c(0,7)) +
+  labs(x = "", y = "No. taxonomic groups monitored") +
+  theme_bw() +
+  theme(text = element_text(size = 11)) +
+  guides(color = "none")
+
+ggsave("figures/fig3_num_taxa_monitored.png", width = 3, height = 3, dpi =400)
+```
 
 
 
