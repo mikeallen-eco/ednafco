@@ -60,36 +60,6 @@ p <- p1 %>%
          numanimalgroups = sum(c_across(c(mammals, birds, amphibians, reptiles, fish, invertebrates)))) %>%
   ungroup()
 
-# % stats for forest carbon project reports
-sum(p$birds)/nrow(p)
-sum(p$mammals)/nrow(p)
-sum(p$reptiles)/nrow(p)
-sum(p$amphibians)/nrow(p)
-sum(p$invertebrates)/nrow(p)
-sum(p$fish)/nrow(p)
-sum(p$numanimalgroups==0)/nrow(p) # no animal monitoring
-sum(p$plants)/nrow(p) # some plant monitoring mentioned
-(sum(p$formal_obs != 0) + 2) # some plot-based animal monitoring 
-  # (including 2 camera trapping w/ no formal visual obs)
-(sum(p$formal_obs != 0)) # visual animal monitoring 
-(sum(p$camtrap != 0)) # camera trap animal monitoring 
-(sum(p$accous != 0)) # acoustic animal monitoring 
-(sum(p$DNA != 0)) # acoustic animal monitoring 
-(sum(p$traps != 0)) # acoustic animal monitoring 
-table(read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "FCO_projects")$Region)/82
-
-# % stats for eDNA assessment literature
-sum(e$birds)/nrow(e)
-sum(e$mammals)/nrow(e)
-sum(e$reptiles)/nrow(e)
-sum(e$amphibians)/nrow(e)
-sum(e$invertebrates)/nrow(e)
-sum(e$fish)/nrow(e)
-sum(e$prokaryotes)/nrow(e)
-sum(e$fungi)/nrow(e)
-sum(e$protists)/nrow(e)
-
-
 ```
 # taxa monitored
 ```{r}
@@ -126,7 +96,7 @@ taxplot %>%
   theme_bw() +
   theme(text = element_text(size = 14))
   
-ggsave("figures/fig1_taxa_monitored2.png", dpi = 400, width = 6, height = 4)
+ggsave("figures/fig2_taxa_monitored2.png", dpi = 400, width = 6, height = 4)
 ```
 # increasing representation of vertebrates over time?
 ```{r}
@@ -150,7 +120,7 @@ vertplot %>%
   theme(text = element_text(size = 14)) +
   labs(x = "", y = "% of eDNA impact assessments\ninvolving vertebrates")
 
-ggsave("figures/fig2_vert_eDNA_assess_over_time.png", dpi = 400, width = 4, height = 4)
+# ggsave("figures/figX_vert_eDNA_assess_over_time.png", dpi = 400, width = 4, height = 4)
 ```
 
 # bar charts of % vertebrates and % terrestrial over time
@@ -197,7 +167,7 @@ gg <- gridExtra::arrangeGrob(vert, terr, ncol = 2)
   
 plot(gg)
 
-ggsave("figures/fig3_pct_vert_terr_over_time.png", plot = gg, dpi = 400, width = 8, height = 5)
+ggsave("figures/fig3_pct_vert_terr_over_time2.png", plot = gg, dpi = 400, width = 8, height = 5)
 
 ```
 
@@ -224,8 +194,115 @@ b %>%
   theme(text = element_text(size = 11)) +
   guides(color = "none")
 
-ggsave("figures/fig3_num_taxa_monitored.png", width = 3, height = 3, dpi =400)
+ggsave("figures/fig4_num_taxa_monitored2.png", width = 3, height = 3, dpi =400)
 ```
 
+# tally stats for results section
+```{r}
+# % stats for forest carbon project reports
+
+# where are the projects
+table(read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "FCO_projects")$Region)/82
+
+# no. projects with some form of formal monitoring
+p %>% 
+  filter(numanimalgroups>0) %>%
+  nrow()
+40/nrow(p) # 67
+
+sum(p$birds)/nrow(p)
+sum(p$mammals)/nrow(p)
+sum(p$reptiles)/nrow(p)
+sum(p$amphibians)/nrow(p)
+sum(p$invertebrates)/nrow(p)
+sum(p$fish)/nrow(p)
+sum(p$numanimalgroups==0)/nrow(p) # no animal monitoring
+sum(p$plants)/nrow(p) # some plant monitoring mentioned
+p %>%
+  filter(formal_obs != 0 | accous != 0 | camtrap != 0) %>%
+  nrow() # some plot-based animal monitoring including camera trapping or traps
+34/nrow(p)
+(sum(p$formal_obs != 0)) # visual animal monitoring 
+(sum(p$camtrap != 0)) # camera trap animal monitoring 
+(sum(p$accous != 0)) # acoustic animal monitoring 
+(sum(p$DNA != 0)) # DNA animal monitoring 
+(sum(p$traps != 0)) # trap-based animal monitoring 
+(sum(p$bg == 1)) # 21 gold projects
+nrow(p) - (sum(p$bg == 1)) # 30 non-gold
+# number of Biodiversity Gold projects with monitoring tech
+p %>%
+  filter(bg == 1) %>%
+  filter(camtrap != 0 | DNA != 0 | accous != 0) %>%
+  nrow()
+# number of formal plot-based monitoring that reported sample size
+tmp <- p %>%
+  filter(formal_obs != 0 | accous != 0 | camtrap != 0 | traps != 0) %>%
+  mutate(formal_obs = as.numeric(formal_obs),
+         accous = as.numeric(accous),
+         camtrap = as.numeric(camtrap),
+         traps = as.numeric(traps)) %>%
+  rowwise() %>%
+  mutate(sampsum = sum(c_across(c(formal_obs, accous, camtrap, traps)), na.rm = T)) %>%
+  ungroup() %>%
+  filter(sampsum > 0)
+# mean sample sizes where reported
+mean(as.numeric(p$camtrap[as.numeric(p$camtrap)>0]), na.rm = T)
+mean(as.numeric(p$formal_obs[as.numeric(p$formal_obs)>0]), na.rm = T)
+mean(as.numeric(p$traps[as.numeric(p$traps)>0]), na.rm = T)
+
+# % stats for eDNA assessment literature
+sum(e$birds)/nrow(e)
+sum(e$mammals)/nrow(e)
+sum(e$reptiles)/nrow(e)
+sum(e$amphibians)/nrow(e)
+sum(e$invertebrates)/nrow(e)
+sum(e$fish)/nrow(e)
+sum(e$prokaryotes)/nrow(e)
+sum(e$fungi)/nrow(e)
+sum(e$protists)/nrow(e)
+table(e$hab_gen)
+# how many terrestrial
+e %>%
+  filter(grepl("forest", hab_gen) |
+         grepl("grassland", hab_gen) |
+         grepl("terrestrial", hab_gen) |
+         grepl("cave", hab_gen)) %>%
+  tally()
+109/nrow(e)
+# how many studies in each habitat
+table(e$hab_gen)
+# what taxa monitored in forests
+ef <- e %>% 
+  filter(grepl("forest", hab_gen))
+sum(ef$birds)
+sum(ef$mammals)
+sum(ef$reptiles)
+sum(ef$amphibians)
+sum(ef$invertebrates)
+sum(ef$fish)
+sum(ef$prokaryotes)
+sum(ef$fungi)
+sum(ef$protists)
+# how many studies that inolved forest were in each impact category
+e %>% 
+  filter(grepl("forest", hab_gen)) %>%
+  group_by(impact) %>%
+  tally()
+
+# how many in each substrate category
+e %>% 
+  filter(grepl("forest", hab_gen)) %>%
+  group_by(substrate) %>%
+  tally()
+
+# where are eDNA studies
+table(e$region)
+table(e$country_area)
+
+# average sample size of eDNA studies
+mean(e$numsamp, na.rm = T)
+
+
+```
 
 
