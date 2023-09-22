@@ -19,7 +19,7 @@ colnames(etmpnum) <- colnames(etmp)
 e <- e1 %>%
   select(-c(mammals:prokaryotes)) %>%
   bind_cols(etmpnum) %>%
-  select(paperid:year, region:substrate, impact:numsamp, mammals:prokaryotes, summary, title, journal, vol, num, pages) %>%
+  select(paperid:year, region:substrate, impact:numsamp, mammals:prokaryotes, target_noDNA, summary, title, journal, vol, num, pages) %>%
   rowwise() %>%
   mutate(numtaxgroups = sum(c_across(mammals:prokaryotes))) %>%
   ungroup() %>%
@@ -37,7 +37,8 @@ e <- e1 %>%
                             hab_gen == "grassland" ~ 1,
                           TRUE ~ 0),
            forest = case_when(grepl(x = hab_gen, pattern = "forest") ~ 1,
-                          TRUE ~ 0))
+                          TRUE ~ 0),
+         year = as.numeric(year))
 
 
 # load carbon offset project data & fix formatting
@@ -45,20 +46,23 @@ p1 <- read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "FCO_projects
   filter(!is.na(yearMR),
          yearMR != "NA")
 
-ptmp <- p1 %>% select(mammals:prokaryotes) %>% as.matrix()
+ptmp <- p1 %>% select(mammals:incidental_obs) %>% as.matrix()
 ptmp[ptmp == "X"] <- 1 # change Xs to 1s
 ptmpnum <- matrix(as.numeric(ptmp), ncol = ncol(ptmp))
 ptmpnum[ptmpnum > 0] <- 1 # change >1 to 1
 colnames(ptmpnum) <- colnames(ptmp)
 
 p <- p1 %>%
-  select(-c(mammals:prokaryotes)) %>%
+  select(-c(mammals:incidental_obs)) %>%
   bind_cols(ptmpnum) %>%
   mutate(totn = as.numeric(camtrap) + as.numeric(formal_obs)) %>%
   rowwise() %>%
   mutate(numtaxgroups = sum(c_across(mammals:prokaryotes)),
-         numanimalgroups = sum(c_across(c(mammals, birds, amphibians, reptiles, fish, invertebrates)))) %>%
-  ungroup()
+         numanimalgroups = sum(c_across(c(mammals, birds, amphibians, 
+                                          reptiles, fish, invertebrates))),
+         nummethods = sum(c_across(camtrap:incidental_obs))) %>%
+  ungroup() %>%
+  filter(reg == "CCB")
 
 ```
 # taxa monitored
@@ -75,6 +79,17 @@ e.taxplot <- e %>%
   mutate(name = fct_reorder(name, num),
          pct = 100*num/nrow(e)) 
 
+e.taxplot.terr <- e %>%
+  filter(hab_gen %in% c("forest", "grassland", "other terrestrial")) %>%
+  select(mammals:prokaryotes) %>%
+  pivot_longer(cols = mammals:prokaryotes) %>% 
+  mutate(group = "eDNA assessments") %>%
+  group_by(group, name) %>%
+  summarize(num = sum(value, na.rm = T)) %>%
+  ungroup() %>%
+  mutate(name = fct_reorder(name, num),
+         pct = 100*num/130) 
+
 taxplot <- p %>%
   select(mammals:prokaryotes) %>%
   pivot_longer(cols = mammals:prokaryotes) %>% 
@@ -86,7 +101,8 @@ taxplot <- p %>%
          pct = 100*num/nrow(p)) %>%
   bind_rows(e.taxplot) %>%
   mutate(groupord = c(rep(1,10),rep(2,10)),
-         group = fct_reorder(group, groupord))
+         group = fct_reorder(group, groupord),
+         imagew = pct * 125 / 77.1084337)
   
 taxplot %>%
   ggplot() +
@@ -96,7 +112,7 @@ taxplot %>%
   theme_bw() +
   theme(text = element_text(size = 14))
   
-ggsave("figures/fig2_taxa_monitored2.png", dpi = 400, width = 6, height = 4)
+ggsave("figures/fig2_taxa_monitored2_full.png", dpi = 400, width = 6, height = 4)
 ```
 # increasing representation of vertebrates over time?
 ```{r}
@@ -120,7 +136,7 @@ vertplot %>%
   theme(text = element_text(size = 14)) +
   labs(x = "", y = "% of eDNA impact assessments\ninvolving vertebrates")
 
-# ggsave("figures/figX_vert_eDNA_assess_over_time.png", dpi = 400, width = 4, height = 4)
+# ggsave("figures/figX_vert_eDNA_assess_over_time_full.png", dpi = 400, width = 4, height = 4)
 ```
 
 # bar charts of % vertebrates and % terrestrial over time
@@ -167,7 +183,7 @@ gg <- gridExtra::arrangeGrob(vert, terr, ncol = 2)
   
 plot(gg)
 
-ggsave("figures/fig3_pct_vert_terr_over_time2.png", plot = gg, dpi = 400, width = 8, height = 5)
+ggsave("figures/fig3_pct_vert_terr_over_time2_full.png", plot = gg, dpi = 400, width = 8, height = 5)
 
 ```
 
@@ -194,21 +210,91 @@ b %>%
   theme(text = element_text(size = 11)) +
   guides(color = "none")
 
-ggsave("figures/fig4_num_taxa_monitored2.png", width = 3, height = 3, dpi =400)
+ggsave("figures/fig4_num_taxa_monitored2_full.png", width = 3, height = 3, dpi =400)
 ```
 
+# number of taxa vs. number of methods
+```{r}
+
+b <- e %>%
+  select(numtaxgroups) %>%
+  mutate(type = "eDNA assessment",
+         nummethods = 1) %>%
+  bind_rows(mutate(select(p, numtaxgroups, nummethods), 
+                   type = "FCO projects",
+                   nummethods = nummethods+1))
+
+b %>%
+  filter(type == "FCO projects") %>%
+  ggplot() +
+  geom_boxplot(aes(x = as.factor(nummethods), y = numtaxgroups, 
+                   color = type),
+             position = position_dodge(width = 1),
+             outlier.alpha = 0) +
+    geom_point(aes(x = jitter(as.numeric(as.factor(nummethods)), 0.3)+1, y = numtaxgroups,
+                 color = type), 
+             shape = 21, alpha = 0.75, size = 3,
+             data = filter(b, type == "FCO projects", nummethods>1)) +
+    geom_point(aes(x = jitter(as.numeric(as.factor(nummethods)), 1.3), y = numtaxgroups,
+                 color = type), 
+             shape = 21, alpha = 0.75, size = 3,
+             data = filter(b, type == "FCO projects", nummethods==1)) +
+  # note: geom_points are split up like this in case showing both eDNA/FCO is desired
+    # geom_point(aes(x = jitter(as.numeric(as.factor(nummethods))-0.25, 2.3), y = numtaxgroups,
+    #              color = type), 
+    #          shape = 21, alpha = 0.75, size = 3,
+    #          data = filter(b, type == "eDNA assessment")) +
+  scale_color_manual(values = c("olivedrab", "darkorange")) +
+  scale_y_continuous(limits = c(0,7), breaks = 1:7) +
+  labs(x = "No. monitoring methods", y = "No. taxonomic groups") +
+  theme_classic() +
+  theme(text = element_text(size = 11)) +
+  guides(color = "none") +
+  theme(text = element_text(size = 14))
+
+ggsave("figures/fig_taxa_monitored_v_methods_used.png", width = 3, height = 3, dpi =400)
+```
+
+# number of taxa vs. number of primer regions
+```{r}
+
+b <- e %>%
+  select(numtaxgroups, numregions, method) %>%
+  mutate(type = "eDNA assessment",
+         nummethods = 1) %>%
+  filter(!is.na(numregions) & numregions != "NA") %>%
+  filter(grepl(method, pattern = "metabar"))
+
+b %>%
+  ggplot() +
+  geom_boxplot(aes(x = as.factor(numregions), y = numtaxgroups),
+             outlier.alpha = 0, color = "firebrick") +
+    geom_point(aes(x = jitter(as.numeric(as.factor(numregions)), 0.3), y = numtaxgroups),
+                 color = "firebrick", 
+             shape = 21, alpha = 0.75, size = 3) +
+  scale_y_continuous(limits = c(0,7), breaks = 1:7) +
+  labs(x = "No. genomic regions", y = "No. taxonomic groups") +
+  theme_classic() +
+  theme(text = element_text(size = 11)) +
+  guides(color = "none") +
+  theme(text = element_text(size = 14))
+
+ggsave("figures/fig_taxa_monitored_v_markers_used.png", width = 3, height = 3, dpi =400)
+```
 # tally stats for results section
 ```{r}
 # % stats for forest carbon project reports
 
 # where are the projects
 table(read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "FCO_projects")$Region)/82
-
+   #     Africa          Asia Latin America 
+   # 0.09756098    0.50000000    0.40243902 
+   
 # no. projects with some form of formal monitoring
-p %>% 
+(numanim <- p %>% 
   filter(numanimalgroups>0) %>%
-  nrow()
-40/nrow(p) # 67
+  nrow())
+numanim/nrow(p) # 85
 
 sum(p$birds)/nrow(p)
 sum(p$mammals)/nrow(p)
@@ -216,19 +302,21 @@ sum(p$reptiles)/nrow(p)
 sum(p$amphibians)/nrow(p)
 sum(p$invertebrates)/nrow(p)
 sum(p$fish)/nrow(p)
-sum(p$numanimalgroups==0)/nrow(p) # no animal monitoring
+sum(p$numanimalgroups==0) # no animal monitoring
+sum(p$numanimalgroups==0)/nrow(p) # % no animal monitoring
 sum(p$plants)/nrow(p) # some plant monitoring mentioned
-p %>%
+(someformal <- p %>%
   filter(formal_obs != 0 | accous != 0 | camtrap != 0) %>%
-  nrow() # some plot-based animal monitoring including camera trapping or traps
-34/nrow(p)
+  nrow()) # some plot-based animal monitoring including camera trapping or traps
+someformal/nrow(p)
 (sum(p$formal_obs != 0)) # visual animal monitoring 
+(sum(p$incidental_obs != 0)) # camera trap animal monitoring 
 (sum(p$camtrap != 0)) # camera trap animal monitoring 
+(sum(p$traps != 0)) # trap-based animal monitoring 
 (sum(p$accous != 0)) # acoustic animal monitoring 
 (sum(p$DNA != 0)) # DNA animal monitoring 
-(sum(p$traps != 0)) # trap-based animal monitoring 
-(sum(p$bg == 1)) # 21 gold projects
-nrow(p) - (sum(p$bg == 1)) # 30 non-gold
+(sum(p$bg == 1)) # 27 gold projects
+nrow(p) - (sum(p$bg == 1)) # 53 non-gold
 # number of Biodiversity Gold projects with monitoring tech
 p %>%
   filter(bg == 1) %>%
@@ -262,13 +350,13 @@ sum(e$fungi)/nrow(e)
 sum(e$protists)/nrow(e)
 table(e$hab_gen)
 # how many terrestrial
-e %>%
+(eterr <- e %>%
   filter(grepl("forest", hab_gen) |
          grepl("grassland", hab_gen) |
          grepl("terrestrial", hab_gen) |
          grepl("cave", hab_gen)) %>%
-  tally()
-109/nrow(e)
+  tally()) # 134
+eterr/nrow(e)
 # how many studies in each habitat
 table(e$hab_gen)
 # what taxa monitored in forests
@@ -301,8 +389,135 @@ table(e$country_area)
 
 # average sample size of eDNA studies
 mean(e$numsamp, na.rm = T)
+sd(e$numsamp, na.rm = T)
+summary(e$numsamp, na.rm = T)
+sd(e$numsamp, na.rm = T) / sqrt(length(e[!is.na(e$numsamp),]$numsamp))
+mean(e$numsamp, na.rm = T)
 
 
 ```
+# Map the CCB projects
+```{r}
 
+library(sf)
+library(rnaturalearth)
+'%notin%' <- Negate('%in%')
 
+world <- rnaturalearth::ne_countries(returnclass = "sf")
+plot(world)
+
+# summarize count of projects by country, fixing name of Tanzania
+pcountry <- p %>%
+  group_by(country_area) %>%
+  summarize(count = length(country_area)) %>%
+  mutate(sovereignt = case_when(country_area == "Tanzania" ~ "United Republic of Tanzania",
+                                TRUE ~ country_area))
+
+worldp <- world %>%
+  left_join(pcountry, by = c("sovereignt"))
+
+# check which ones matched correctly (out of 17)
+test = worldp %>% filter(!is.na(count))
+
+# make lat/lon into sf object
+psf <- st_as_sf(p[,c("lon_approx", "lat_approx")],
+                coords = c("lon_approx", "lat_approx"))
+
+# plot
+psf <- p %>%
+  filter(!is.na(lat_approx)) %>%
+  select(ID, lat_approx, lon_approx) %>%
+  st_as_sf(coords = c("lon_approx", "lat_approx"),
+           crs = 4326)
+
+# Deactivate s2
+sf::sf_use_s2(FALSE)
+
+worldp %>%
+ggplot +
+  geom_sf(aes(fill = count)) +
+  geom_sf(aes(), 
+             shape = "x", data = psf, color = "red") +
+  scale_fill_viridis_b() +
+  theme_bw() +
+  labs(x = "", y = "", fill = "No.\nprojects") +  
+coord_sf(crs = st_crs("ESRI:54030"))
+
+ggsave("figures/fig_map_projects3.png", width = 6, height = 6, dpi =400)
+
+# summarize number of projects at different latitudes
+sum(abs(p$lat_approx)<23.5, na.rm = T) # 32
+sum(abs(p$lat_approx)>23.5, na.rm = T) # 24
+sum(abs(p$lat_approx)<35, na.rm = T) # 48
+sum(abs(p$lat_approx)>35, na.rm = T) # 8
+
+sum(!is.na(p$lat_approx)) # 56
+48/56
+8/56
+```
+# Map the eDNA assessment literature
+```{r}
+
+library(sf)
+library(rnaturalearth)
+'%notin%' <- Negate('%in%')
+
+world <- rnaturalearth::ne_countries(returnclass = "sf")
+plot(world)
+
+# summarize count of projects by country, fixing name of Tanzania
+ecountry <- e %>%
+  mutate(admin = case_when(country_area == "Tanzania" ~ "United Republic of Tanzania",
+                                country_area == "USA" ~ "United States of America",
+                                country_area == "Hawaii (USA)" ~ "United States of America",
+                                country_area == "Hawaii" ~ "United States of America",
+                                country_area == "Mayotte (France)" ~ "France",
+                                country_area == "UK" ~ "United Kingdom", 
+                                country_area == "Czech Republic" ~ "Czechia", 
+                                country_area == "Curacao" ~ "Netherlands",
+                                TRUE ~ country_area)) %>%
+  filter(country_area %notin% c("Amazon basin", "Atlantic Ocean",
+                                "Bay of Biscay", "S. Atlantic / Antarctic Ocean",
+                                "Mediterranean Sea", "Mekong River",
+                                "Multiple", "South Pacific")) %>%
+  group_by(admin) %>%
+  summarize(count = length(admin))
+
+worlde <- world %>%
+  left_join(ecountry, by = c("admin"))
+
+# check which ones matched correctly (out of 17)
+test = worlde %>% filter(!is.na(count))
+ecountry[ecountry$admin %notin% test$admin,]$admin
+
+# plot
+esf <- e1 %>%
+  filter(!is.na(lat_approx)) %>%
+  select(paperid, lat_approx, lon_approx) %>%
+  st_as_sf(coords = c("lon_approx", "lat_approx"),
+           crs = 4326)
+
+# Deactivate s2
+sf::sf_use_s2(FALSE)
+
+worlde %>%
+ggplot +
+  geom_sf(aes(fill = count)) +
+  geom_sf(aes(), 
+             shape = "x", data = esf, color = "red") +
+  scale_fill_viridis_b() +
+  theme_bw() +
+  labs(x = "", y = "", fill = "No.\nstudies") +  
+coord_sf(crs = st_crs("ESRI:54030"))
+
+ggsave("figures/fig_map_eDNAstudies.png", width = 6, height = 6, dpi =400)
+
+# summarize number of projects at different latitudes
+sum(abs(e1$lat_approx)<23.5, na.rm = T) # 17
+sum(abs(e1$lat_approx)>23.5, na.rm = T) # 66
+sum(abs(e1$lat_approx)<35, na.rm = T) # 40
+sum(abs(e1$lat_approx)>35, na.rm = T) # 44
+
+sum(!is.na(e1$lat_approx)) # 84
+40/84
+```
