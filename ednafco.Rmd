@@ -6,8 +6,11 @@ library(ggplot2)
 library(forcats)
 library(readxl)
 
+# define location of datafile
+datafile <- "data/FCO_biodiversity_data_20231110.xlsx"
+
 # load eDNA assessment literature data & fix formatting
-e1 <- read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "eDNA_assessment") %>%
+e1 <- read_xlsx(datafile, sheet = "eDNA_assessment") %>%
   filter(pdf == "y", !is.na(region), !is.na(invertebrates))
 
 etmp <- e1 %>% select(mammals:prokaryotes) %>% as.matrix()
@@ -42,7 +45,7 @@ e <- e1 %>%
 
 
 # load carbon offset project data & fix formatting
-p1 <- read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "FCO_projects") #%>%
+p1 <- read_xlsx(datafile, sheet = "FCO_projects") #%>%
 #   filter(!is.na(yearMR),
 #          yearMR != "NA")
 
@@ -62,7 +65,9 @@ p <- p1 %>%
                                           reptiles, fish, invertebrates))),
          nummethods = sum(c_across(camtrap:incidental_obs))) %>%
   ungroup() %>%
-  filter(reg == "CCB")
+  filter(reg == "CCB") %>%
+  filter(ID != "1175",
+         ID != "1641")
 
 pall <- p1 %>%
   select(-c(mammals:incidental_obs)) %>%
@@ -302,9 +307,7 @@ ggsave("figures/fig_taxa_monitored_v_markers_used.png", width = 3, height = 3, d
 # % stats for forest carbon project reports
 
 # where are the projects
-table(read_xlsx("data/FCO_biodiversity_data_working.xlsx", sheet = "FCO_projects")$Region)/82
-   #     Africa          Asia Latin America 
-   # 0.09756098    0.50000000    0.40243902 
+table(read_xlsx(datafile, sheet = "FCO_projects")$Region)/82
    
 # no. projects with some form of formal monitoring
 (numanim <- p %>% 
@@ -378,22 +381,47 @@ table(e$hab_gen)
 # what taxa monitored in forests
 ef <- e %>% 
   filter(grepl("forest", hab_gen))
-sum(ef$birds)
-sum(ef$mammals)
-sum(ef$reptiles)
-sum(ef$amphibians)
-sum(ef$invertebrates)
-sum(ef$fish)
-sum(ef$prokaryotes)
-sum(ef$fungi)
-sum(ef$protists)
-# how many studies that inolved forest were in each impact category
+sum(ef$birds)/nrow(ef)
+sum(ef$mammals)/nrow(ef)
+sum(ef$reptiles)/nrow(ef)
+sum(ef$amphibians)/nrow(ef)
+sum(ef$invertebrates)/nrow(ef)
+sum(ef$fish)/nrow(ef)
+sum(ef$prokaryotes)/nrow(ef)
+sum(ef$fungi)/nrow(ef)
+sum(ef$protists)/nrow(ef)
+
+# what about in terrestrial habitats only
+eterr2 <- e %>%
+  filter(grepl("forest", hab_gen) |
+         grepl("grassland", hab_gen) |
+         grepl("terrestrial", hab_gen) |
+         grepl("cave", hab_gen))
+sum(eterr2$birds)/nrow(eterr2)
+sum(eterr2$mammals)/nrow(eterr2)
+sum(eterr2$reptiles)/nrow(eterr2)
+sum(eterr2$amphibians)/nrow(eterr2)
+sum(eterr2$invertebrates)/nrow(eterr2)
+sum(eterr2$fish)/nrow(eterr2)
+sum(eterr2$prokaryotes)/nrow(eterr2)
+sum(eterr2$fungi)/nrow(eterr2)
+sum(eterr2$protists)/nrow(eterr2)
+
+# terrestrial eDNA study substrates
+table(eterr2$substrate)
+
+# how many studies were in each impact category
+e %>% 
+  group_by(impact) %>%
+  tally()
+
+# how many studies that involved forest were in each impact category
 e %>% 
   filter(grepl("forest", hab_gen)) %>%
   group_by(impact) %>%
   tally()
 
-# how many in each substrate category
+# how many forest studies in each substrate category 
 e %>% 
   filter(grepl("forest", hab_gen)) %>%
   group_by(substrate) %>%
@@ -402,6 +430,11 @@ e %>%
 # where are eDNA studies
 table(e$region)
 table(e$country_area)
+et <- e %>% filter(trop_sub == 1)
+etemp <- e %>% filter(trop_sub == 0)
+table(et$region)/nrow(et)
+table(etemp$region)/nrow(etemp)
+table(etemp$country_area)/nrow(etemp)
 
 # average sample size of eDNA studies
 mean(e$numsamp, na.rm = T)
@@ -563,3 +596,24 @@ sum(!is.na(e.terr$lat_approx)) # 39
 19/39
 
 ```
+# FCO project stats for results
+```{r}
+pall %>%
+  filter(!is.na(area_ha)) %>%
+  rename(type = 5) %>%
+  group_by(type) %>%
+  summarize(sum = sum(as.numeric(area_ha), na.rm = T),
+            n = length(area_ha),
+            per = sum/n) %>%
+  mutate(tot = per*c(20,50,1,29))
+
+pall %>%
+  filter(!is.na(ann_emiss_red)) %>%
+  rename(type = 5) %>%
+  group_by(type) %>%
+  summarize(sum = sum(as.numeric(ann_emiss_red), na.rm = T),
+            n = length(area_ha),
+            per = sum/n) %>%
+  mutate(tot = per*c(20,50,1,29))
+```
+
