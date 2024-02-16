@@ -9,7 +9,7 @@ library(readxl)
 # define location of datafile
 # datafile <- "data/eDNA_FCM_data_20231111.xlsx"
 # datafile <- "data/eDNA_FCM_data_20240115.xlsx"
-datafile <- "data/eDNA_FCM_data_20240215.xlsx"
+datafile <- "data/eDNA_FCM_data_20240216.xlsx"
 
 # load eDNA assessment literature data & fix formatting
 e1 <- read_xlsx(datafile, sheet = "eDNA_assessment") %>%
@@ -83,12 +83,12 @@ pall <- p1 %>%
 ```
 # taxa monitored
 ```{r}
-# format data for eDNA assessments
+# format data for eDNA studies
 
 e.taxplot <- e %>%
   select(mammals:prokaryotes) %>%
   pivot_longer(cols = mammals:prokaryotes) %>% 
-  mutate(group = "eDNA assessments") %>%
+  mutate(group = "eDNA studies") %>%
   group_by(group, name) %>%
   summarize(num = sum(value, na.rm = T)) %>%
   ungroup() %>%
@@ -101,7 +101,7 @@ e.taxplot.terr <- e %>%
                         "grassland + freshwater")) %>%
   select(mammals:prokaryotes) %>%
   pivot_longer(cols = mammals:prokaryotes) %>% 
-  mutate(group = "eDNA assessments") %>%
+  mutate(group = "eDNA studies") %>%
   group_by(group, name) %>%
   summarize(num = sum(value, na.rm = T)) %>%
   ungroup() %>%
@@ -124,13 +124,14 @@ taxplot <- pall %>%
   
 taxplot %>%
   ggplot() +
-  geom_col(aes(x = pct, y = name)) +
+  geom_col(aes(x = pct, y = name), fill = "black") +
   facet_wrap(~group) +
   labs(x = "% of projects or studies", y = "") +
   theme_bw() +
-  theme(text = element_text(size = 14))
+  theme(text = element_text(size = 14,
+                            color = "black"))
   
-ggsave("figures/fig2_taxa_monitored_CCB_GS_eDNAterr.png", dpi = 400, width = 6, height = 4)
+ggsave("figures/fig2_taxa_monitored_CCB_GS_eDNAterr_20240216.png", dpi = 400, width = 6, height = 4)
 ```
 # increasing representation of vertebrates over time?
 ```{r}
@@ -252,45 +253,66 @@ ggsave("figures/fig4_num_taxa_monitored2_full.png", width = 3, height = 3, dpi =
 
 # number of taxa vs. number of methods
 ```{r}
+e.meth <- e %>%
+  # filter(grepl("forest", hab_gen) |
+  #        grepl("grassland", hab_gen) |
+  #        grepl("terrestrial", hab_gen) |
+  #        grepl("cave", hab_gen)) %>%
+  mutate(nummethods = case_when(substrate %in% c("organism diet + vegetation", 
+                                              "organism diet + whole organism",
+                                              "sediment + organism diet",
+                                              "sediment + organism microbiome",
+                                              "sediment + whole organism",
+                                              "vegetation + organism diet",
+                                              "sediment + water",
+                                              "surface scrape + water",
+                                              "water + organism microbiome",
+                                              "water + sediment") ~ 2,
+                             TRUE ~ 1))
+table(e.meth$substrate)
+table(e.meth$nummethods)
 
-b <- e %>%
-  select(numtaxgroups) %>%
-  mutate(type = "eDNA assessment",
-         nummethods = 1) %>%
-  bind_rows(mutate(select(p, numtaxgroups, nummethods), 
-                   type = "FCO projects",
-                   nummethods = nummethods+1))
+
+b <- e.meth %>%
+  select(numtaxgroups, nummethods) %>%
+  mutate(type = "eDNA") %>%
+  bind_rows(filter(mutate(select(pall, numtaxgroups, nummethods, animal_mon), 
+                   type = "FCO",
+                   nummethods = nummethods+1), animal_mon != "yes, methods unknown")) %>%
+  filter(numtaxgroups>0) %>%
+  select(-animal_mon)
 
 b %>%
-  filter(type == "FCO projects",
-         numtaxgroups>0) %>%
   ggplot() +
   geom_boxplot(aes(x = as.factor(nummethods), y = numtaxgroups, 
                    color = type),
              position = position_dodge(width = 1),
              outlier.alpha = 0) +
-    geom_point(aes(x = jitter(as.numeric(as.factor(nummethods)), 0.3)+1, y = numtaxgroups,
-                 color = type), 
-             shape = 21, alpha = 0.75, size = 3,
-             data = filter(b, type == "FCO projects", nummethods>1)) +
-    geom_point(aes(x = jitter(as.numeric(as.factor(nummethods)), 1.3), y = numtaxgroups,
-                 color = type), 
-             shape = 21, alpha = 0.75, size = 3,
-             data = filter(b, type == "FCO projects", nummethods==1, numtaxgroups>0)) +
-  # note: geom_points are split up like this in case showing both eDNA/FCO is desired
-    geom_point(aes(x = jitter(as.numeric(as.factor(nummethods))-0.25, 2.3), y = numtaxgroups,
+  # needed to split up points due to jittering making x axis not factor and not dodge-able
+    geom_point(aes(x = jitter(as.numeric(as.factor(nummethods)), 0.3)+.25, y = numtaxgroups,
                  color = type),
+             position = position_dodge(width = 1), 
              shape = 21, alpha = 0.75, size = 3,
-             data = filter(b, type == "eDNA assessment")) +
-  scale_color_manual(values = c("olivedrab", "darkorange")) +
+             data = filter(b, type == "FCO", nummethods <3)) +
+      geom_point(aes(x = jitter(as.numeric(nummethods), 0.3), y = numtaxgroups,
+                 color = type),
+             position = position_dodge(width = 1), 
+             shape = 21, alpha = 0.75, size = 3,
+             data = filter(b, type == "FCO", nummethods >2)) +
+      geom_point(aes(x = jitter(as.numeric(as.factor(nummethods)), 0.3)-.25, y = numtaxgroups,
+                 color = type),
+             position = position_dodge(width = 1), 
+             shape = 21, alpha = 0.75, size = 3,
+             data = filter(b, type == "eDNA", nummethods <3)) +
+  scale_color_manual(values = c("firebrick", "olivedrab")) +
   scale_y_continuous(limits = c(0,7), breaks = 1:7) +
-  labs(x = "No. monitoring methods", y = "No. taxonomic groups") +
+  labs(x = "No. field methods", y = "No. taxonomic groups") +
   theme_classic() +
   theme(text = element_text(size = 11)) +
   guides(color = "none") +
   theme(text = element_text(size = 14))
 
-ggsave("figures/fig_taxa_monitored_v_methods_used_20240216.png", width = 3, height = 3, dpi =400)
+ggsave("figures/fig_taxa_monitored_v_methods_used_20240216d.png", width = 3, height = 3, dpi =400)
 ```
 
 # number of taxa vs. number of primer regions
@@ -330,23 +352,26 @@ table(read_xlsx(datafile, sheet = "FCO_projects")$Region) / length(read_xlsx(dat
 (numanim <- p %>% 
   filter(numanimalgroups>0) %>%
   nrow())
-numanim/nrow(p) # 85
+numanim/nrow(p)
+table(p$animal_mon) # 86
 
-sum(p$birds)/nrow(p)
-sum(p$mammals)/nrow(p)
-sum(p$reptiles)/nrow(p)
-sum(p$amphibians)/nrow(p)
-sum(p$invertebrates)/nrow(p)
-sum(p$fish)/nrow(p)
-sum(p$numanimalgroups==0) # no animal monitoring
-sum(p$numanimalgroups==0)/nrow(p) # % no animal monitoring
-summary(p[p$numanimalgroups>0,]$numanimalgroups)
-hist(p[p$numanimalgroups>0,]$numanimalgroups)
-summary(p[p$numtaxgroups>0,]$numtaxgroups)
-hist(p[p$numtaxgroups>0,]$numtaxgroups)
-summary(p[p$nummethods>0,]$nummethods)
-hist(p[p$nummethods>0,]$nummethods)
-length(p[p$nummethods>0,]$nummethods)
+pa <- p %>%
+  filter(animal_mon != "none")
+sum(pa$birds)/nrow(pa)
+sum(pa$mammals)/nrow(pa)
+sum(pa$reptiles)/nrow(pa)
+sum(pa$amphibians)/nrow(pa)
+sum(pa$invertebrates)/nrow(pa)
+sum(pa$fish)/nrow(pa)
+sum(pa$numanimalgroups==0) # no specific animal taxa reported
+sum(pa$numanimalgroups==0)/nrow(p) # % no animal monitoring
+summary(pa[pa$numanimalgroups>0,]$numanimalgroups)
+hist(pa[pa$numanimalgroups>0,]$numanimalgroups)
+summary(pa[pa$numtaxgroups>0,]$numtaxgroups)
+hist(pa[pa$numtaxgroups>0,]$numtaxgroups)
+summary(pa[pa$nummethods>0,]$nummethods)
+hist(pa[pa$nummethods>0,]$nummethods)
+length(pa[pa$nummethods>0,]$nummethods)
 
 sum(p$plants)/nrow(p) # some plant monitoring mentioned
 (someformal <- p %>%
@@ -480,7 +505,7 @@ sd(as.numeric(e$numsamp), na.rm = T) / sqrt(length(e[!is.na(e$numsamp),]$numsamp
 
 
 ```
-# Map the CCB projects
+# Map the FCO projects
 ```{r}
 
 library(sf)
@@ -499,14 +524,19 @@ p_pts <- pall %>%
 pcountry <- pall %>%
   group_by(country_area) %>%
   summarize(count = length(country_area)) %>%
-  mutate(sovereignt = case_when(country_area == "Tanzania" ~ "United Republic of Tanzania",
+  mutate(admin = case_when(country_area == "Tanzania" ~ "United Republic of Tanzania",
+                           country_area == "Congo the Democratic Republic of the" ~
+                             "Democratic Republic of the Congo",
+                           country_area == "United States" ~ "United States of America",
+                           country_area == "Timor-Leste" ~ "East Timor",
                                 TRUE ~ country_area))
 
 worldp <- world %>%
-  left_join(pcountry, by = c("sovereignt"))
+  left_join(pcountry, by = c("admin"))
 
 # check which ones matched correctly (out of 17)
 test = worldp %>% filter(!is.na(count))
+pcountry[pcountry$admin %notin% test$admin,]$admin
 
 # make lat/lon into sf object
 psf <- st_as_sf(p_pts[,c("lon_approx", "lat_approx")],
@@ -533,18 +563,19 @@ ggplot +
   labs(x = "", y = "", fill = "No.\nprojects") +  
 coord_sf(crs = st_crs("ESRI:54030"))
 
-ggsave("figures/fig_map_projects4b.png", width = 6, height = 6, dpi = 400)
+ggsave("figures/fig_map_projects_20240216a.png", width = 6, height = 6, dpi = 400)
 
 # summarize number of projects at different latitudes
-sum(abs(as.numeric(pall$lat_approx))<23.5, na.rm = T) # 40
-sum(abs(as.numeric(pall$lat_approx))>23.5, na.rm = T) # 38
-sum(abs(as.numeric(pall$lat_approx))<35, na.rm = T) # 63
-sum(abs(as.numeric(pall$lat_approx))>35, na.rm = T) # 15
+sum(abs(as.numeric(pall$lat_approx))<23.5, na.rm = T) # 64
+sum(abs(as.numeric(pall$lat_approx))>23.5, na.rm = T) # 40
+sum(abs(as.numeric(pall$lat_approx))<35, na.rm = T) # 87
+sum(abs(as.numeric(pall$lat_approx))>35, na.rm = T) # 17
 
 
-sum(pall$`trop-subtrop`==1, na.rm = T) # 85
-sum(!is.na(pall$`trop-subtrop`)) # 100
-mean(abs(as.numeric(pall[pall$`trop-subtrop`!=1,]$lat_approx)), na.rm = T)
+sum(pall$`trop-subtrop`==1, na.rm = T) # 100
+sum(!is.na(pall$`trop-subtrop`)) # 117
+temp_proj <- pall[pall$`trop-subtrop`!=1,]
+mean(abs(as.numeric(pall[pall$`trop-subtrop`!=1,]$lat_approx)), na.rm = T) # 40
 
 
 ```
@@ -605,28 +636,26 @@ ggplot +
   labs(x = "", y = "", fill = "No.\nstudies") +  
 coord_sf(crs = st_crs("ESRI:54030"))
 
-ggsave("figures/fig_map_eDNAstudies2.png", width = 6, height = 6, dpi =400)
+ggsave("figures/fig_map_eDNAstudies_20240216a.png", width = 6, height = 6, dpi =400)
 
 # summarize number of projects at different latitudes
-sum(abs(e1$lat_approx)<=23.5, na.rm = T) # 18
-sum(abs(e1$lat_approx)>23.5, na.rm = T) # 66
-sum(abs(e1$lat_approx)<=35, na.rm = T) # 40
-sum(abs(e1$lat_approx)>35, na.rm = T) # 44
+sum(abs(as.numeric(e1$lat_approx))<=23.5, na.rm = T) # 44
+sum(abs(as.numeric(e1$lat_approx))>23.5, na.rm = T) # 279
+sum(abs(as.numeric(e1$lat_approx))<=35, na.rm = T) # 103
+sum(abs(as.numeric(e1$lat_approx))>35, na.rm = T) # 220
 
-sum(!is.na(e1$lat_approx)) # 84
-40/84
+sum(!is.na(as.numeric(e1$lat_approx))) # 323
+103/323 # 32%
 
-# just terrestrial studies
-e.terr <- e1 %>%
-    filter(grepl(hab_gen, pattern = "forest") |
-             grepl(hab_gen, pattern = "grassland") |
-             grepl(hab_gen, pattern = "cave") |
-             grepl(hab_gen, pattern = "other terrestrial"))
+# where were the tropical/subtropical studies
+e_trop <- e1[abs(as.numeric(e1$lat_approx))<=35,]
 
-sum(abs(e.terr$lat_approx)<=35, na.rm = T) # 19
-sum(abs(e.terr$lat_approx)>35, na.rm = T) # 20
-sum(!is.na(e.terr$lat_approx)) # 39
-19/39
+table(e_trop$region)/323
+# cetral amer./carribean = 5 projecst
+# s. amer. = 15 projects
+20/323
+
+sum(e$trop_sub)/324
 
 ```
 # FCO project stats for results
@@ -666,10 +695,9 @@ sum(!is.na(as.numeric(e$numsamp)))
 tot_e_samps <- as.numeric(e[!is.na(as.numeric(e$numsamp)),]$numsamp)
 sum(tot_e_samps >10) / 324
 
-
 fco_dat <- data.frame(label = rep(c(
                                 "Replicated\nsurvey design",
-                                "Report\nsample size",
+                                "Sample size\nreported",
                                 "Sample\nsize >10",
                                 "Data\navailable"), 2),
                       type = c(rep("FCO", 4), rep("eDNA", 4)),
@@ -677,17 +705,16 @@ fco_dat <- data.frame(label = rep(c(
                       order = c(1, 2, 3, 4, 5, 6, 7, 8)) %>%
   mutate(label = forcats::fct_reorder(label, order, .desc = T))
 
-
 fco_dat %>%
   filter(type == "FCO") %>%
 ggplot() +
   geom_col(aes(x = val, y = label), fill = "black") +
   scale_x_continuous(limit = c(0,100)) +
   theme_bw() +
-  theme(text = element_text(size = 26)) +
+  theme(text = element_text(size = 30)) +
   labs(x = "% of projects", y = "")
 
-ggsave("figures/fig1_methods_fco_20240216.png", width = 7, height = 5, dpi =600)
+ggsave("figures/fig1_methods_fco_20240216c.png", width = 7, height = 5, dpi =600)
 
 # Fig 1 panel - Rigor & Transparency (eDNA)
 fco_dat %>%
@@ -696,10 +723,10 @@ ggplot() +
   geom_col(aes(x = val, y = label), fill = "black") +
   scale_x_continuous(limit = c(0,100)) +
   theme_bw() +
-  theme(text = element_text(size = 26)) +
+  theme(text = element_text(size = 30)) +
   labs(x = "% of studies", y = "")
 
-ggsave("figures/fig1_methods_edna_20240216.png", width = 7, height = 5, dpi =600)
+ggsave("figures/fig1_methods_edna_20240216c.png", width = 7, height = 5, dpi =600)
 
 ```
 # compare rigor of projects in 3 organizations
@@ -754,14 +781,14 @@ fco_org_dat <- data.frame(label = rep(c(
 
 fco_org_dat %>%
 ggplot() +
-  geom_col(aes(x = val, y = label)) +
+  geom_col(aes(x = val, y = label), fill = "black") +
   facet_wrap(~type) +
   scale_x_continuous(limit = c(0,100)) +
   theme_bw() +
-  theme(text = element_text(size = 16)) +
+  theme(text = element_text(size = 16, color = "black")) +
   labs(x = "% of projects", y = "")
 
-ggsave("figures/fig2_methods_fco_by_org_20240216d.png", width = 9, height = 4, dpi =600)
+ggsave("figures/fig2_methods_fco_by_org_20240216e.png", width = 9, height = 4, dpi =600)
 
 # Fig 1 panel - Rigor & Transparency (eDNA)
 fco_dat %>%
