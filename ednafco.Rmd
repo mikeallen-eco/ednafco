@@ -7,7 +7,9 @@ library(forcats)
 library(readxl)
 
 # define location of datafile
-datafile <- "data/FCO_biodiversity_data_20231110.xlsx"
+# datafile <- "data/eDNA_FCM_data_20231111.xlsx"
+# datafile <- "data/eDNA_FCM_data_20240115.xlsx"
+datafile <- "data/eDNA_FCM_data_20240215.xlsx"
 
 # load eDNA assessment literature data & fix formatting
 e1 <- read_xlsx(datafile, sheet = "eDNA_assessment") %>%
@@ -45,9 +47,9 @@ e <- e1 %>%
 
 
 # load carbon offset project data & fix formatting
-p1 <- read_xlsx(datafile, sheet = "FCO_projects") #%>%
-#   filter(!is.na(yearMR),
-#          yearMR != "NA")
+p1 <- read_xlsx(datafile, sheet = "FCO_projects") %>%
+   filter(!is.na(yearMR),
+          yearMR != "NA")
 
 ptmp <- p1 %>% select(mammals:incidental_obs) %>% as.matrix()
 ptmp[ptmp == "X"] <- 1 # change Xs to 1s
@@ -64,10 +66,7 @@ p <- p1 %>%
          numanimalgroups = sum(c_across(c(mammals, birds, amphibians, 
                                           reptiles, fish, invertebrates))),
          nummethods = sum(c_across(camtrap:incidental_obs))) %>%
-  ungroup() %>%
-  filter(reg == "CCB") %>%
-  filter(ID != "1175",
-         ID != "1641")
+  ungroup()
 
 pall <- p1 %>%
   select(-c(mammals:incidental_obs)) %>%
@@ -97,7 +96,9 @@ e.taxplot <- e %>%
          pct = 100*num/nrow(e)) 
 
 e.taxplot.terr <- e %>%
-  filter(hab_gen %in% c("forest", "grassland", "other terrestrial")) %>%
+  filter(hab_gen %in% c("forest", "grassland", "other terrestrial", 
+                        "cave", "forest + freshwater", "cave", 
+                        "grassland + freshwater")) %>%
   select(mammals:prokaryotes) %>%
   pivot_longer(cols = mammals:prokaryotes) %>% 
   mutate(group = "eDNA assessments") %>%
@@ -105,7 +106,7 @@ e.taxplot.terr <- e %>%
   summarize(num = sum(value, na.rm = T)) %>%
   ungroup() %>%
   mutate(name = fct_reorder(name, num),
-         pct = 100*num/130) 
+         pct = 100*num/134) 
 
 taxplot <- pall %>%
   select(mammals:prokaryotes) %>%
@@ -116,7 +117,7 @@ taxplot <- pall %>%
   ungroup() %>%
   mutate(name = fct_reorder(name, num),
          pct = 100*num/nrow(pall)) %>%
-  bind_rows(e.taxplot) %>%
+  bind_rows(e.taxplot.terr) %>%
   mutate(groupord = c(rep(1,10),rep(2,10)),
          group = fct_reorder(group, groupord),
          imagew = pct * 125 / 77.1084337)
@@ -129,7 +130,7 @@ taxplot %>%
   theme_bw() +
   theme(text = element_text(size = 14))
   
-ggsave("figures/fig2_taxa_monitored_CCB+GS.png", dpi = 400, width = 6, height = 4)
+ggsave("figures/fig2_taxa_monitored_CCB_GS_eDNAterr.png", dpi = 400, width = 6, height = 4)
 ```
 # increasing representation of vertebrates over time?
 ```{r}
@@ -144,14 +145,15 @@ vertplot <- data.frame(
   ucl = plogis(predict(mod)+2*predict(mod, se.fit = T)$se.fit)) %>%
   distinct()
 
-vertplot %>%
+(vertmodplot <- vertplot %>%
   ggplot() +
   geom_point(aes(x = year, y = 100*fit), size = 4) +
   geom_errorbar(aes(x = year, ymin = 100*lcl, ymax = 100*ucl), linewidth = 1, width = 0) +
   scale_x_continuous(breaks = seq(2013, 2023, by = 2)) +
   theme_bw() +
   theme(text = element_text(size = 14)) +
-  labs(x = "", y = "% of eDNA impact assessments\ninvolving vertebrates")
+  labs(x = "", y = "% of eDNA impact assessments\ninvolving vertebrates") +
+  scale_y_continuous(limits = c(0,35)))
 
 # ggsave("figures/figX_vert_eDNA_assess_over_time_full.png", dpi = 400, width = 4, height = 4)
 ```
@@ -206,6 +208,20 @@ plot(gg)
 
 ggsave("figures/fig3_pct_vert_terr_over_time2_full.png", plot = gg, dpi = 400, width = 8, height = 5)
 
+vert <- vert + 
+  scale_y_continuous(limits = c(0,35))
+
+vertmodplot <- vertmodplot + 
+  labs(y = "") +
+  scale_y_continuous(limits = c(0,35))
+
+gg2 <- gridExtra::arrangeGrob(vert, vertmodplot, ncol = 2)
+  
+plot(gg2)
+
+ggsave("figures/fig3_pct_vert_over_time_double.png", plot = gg2, dpi = 400, width = 8, height = 5)
+
+
 ```
 
 # number of taxa
@@ -246,7 +262,8 @@ b <- e %>%
                    nummethods = nummethods+1))
 
 b %>%
-  filter(type == "FCO projects") %>%
+  filter(type == "FCO projects",
+         numtaxgroups>0) %>%
   ggplot() +
   geom_boxplot(aes(x = as.factor(nummethods), y = numtaxgroups, 
                    color = type),
@@ -259,12 +276,12 @@ b %>%
     geom_point(aes(x = jitter(as.numeric(as.factor(nummethods)), 1.3), y = numtaxgroups,
                  color = type), 
              shape = 21, alpha = 0.75, size = 3,
-             data = filter(b, type == "FCO projects", nummethods==1)) +
+             data = filter(b, type == "FCO projects", nummethods==1, numtaxgroups>0)) +
   # note: geom_points are split up like this in case showing both eDNA/FCO is desired
-    # geom_point(aes(x = jitter(as.numeric(as.factor(nummethods))-0.25, 2.3), y = numtaxgroups,
-    #              color = type), 
-    #          shape = 21, alpha = 0.75, size = 3,
-    #          data = filter(b, type == "eDNA assessment")) +
+    geom_point(aes(x = jitter(as.numeric(as.factor(nummethods))-0.25, 2.3), y = numtaxgroups,
+                 color = type),
+             shape = 21, alpha = 0.75, size = 3,
+             data = filter(b, type == "eDNA assessment")) +
   scale_color_manual(values = c("olivedrab", "darkorange")) +
   scale_y_continuous(limits = c(0,7), breaks = 1:7) +
   labs(x = "No. monitoring methods", y = "No. taxonomic groups") +
@@ -273,7 +290,7 @@ b %>%
   guides(color = "none") +
   theme(text = element_text(size = 14))
 
-ggsave("figures/fig_taxa_monitored_v_methods_used.png", width = 3, height = 3, dpi =400)
+ggsave("figures/fig_taxa_monitored_v_methods_used_20240216.png", width = 3, height = 3, dpi =400)
 ```
 
 # number of taxa vs. number of primer regions
@@ -300,16 +317,16 @@ b %>%
   guides(color = "none") +
   theme(text = element_text(size = 14))
 
-ggsave("figures/fig_taxa_monitored_v_markers_used.png", width = 3, height = 3, dpi =400)
+ggsave("figures/fig_taxa_monitored_v_markers_used_20240216.png", width = 3, height = 3, dpi =400)
 ```
 # tally stats for results section
 ```{r}
 # % stats for forest carbon project reports
 
 # where are the projects
-table(read_xlsx(datafile, sheet = "FCO_projects")$Region)/82
+table(read_xlsx(datafile, sheet = "FCO_projects")$Region) / length(read_xlsx(datafile, sheet = "FCO_projects")$Region)
    
-# no. projects with some form of formal monitoring
+# no. projects with some form of formal animal monitoring
 (numanim <- p %>% 
   filter(numanimalgroups>0) %>%
   nrow())
@@ -323,6 +340,14 @@ sum(p$invertebrates)/nrow(p)
 sum(p$fish)/nrow(p)
 sum(p$numanimalgroups==0) # no animal monitoring
 sum(p$numanimalgroups==0)/nrow(p) # % no animal monitoring
+summary(p[p$numanimalgroups>0,]$numanimalgroups)
+hist(p[p$numanimalgroups>0,]$numanimalgroups)
+summary(p[p$numtaxgroups>0,]$numtaxgroups)
+hist(p[p$numtaxgroups>0,]$numtaxgroups)
+summary(p[p$nummethods>0,]$nummethods)
+hist(p[p$nummethods>0,]$nummethods)
+length(p[p$nummethods>0,]$nummethods)
+
 sum(p$plants)/nrow(p) # some plant monitoring mentioned
 (someformal <- p %>%
   filter(formal_obs != 0 | accous != 0 | camtrap != 0) %>%
@@ -368,6 +393,10 @@ sum(e$prokaryotes)/nrow(e)
 sum(e$fungi)/nrow(e)
 sum(e$protists)/nrow(e)
 table(e$hab_gen)
+summary(e[e$numtaxgroups>0,]$numtaxgroups)
+hist(e[e$numtaxgroups>0,]$numtaxgroups)
+length(e[e$numtaxgroups>0,]$numtaxgroups)
+
 # how many terrestrial
 (eterr <- e %>%
   filter(grepl("forest", hab_gen) |
@@ -397,29 +426,31 @@ eterr2 <- e %>%
          grepl("grassland", hab_gen) |
          grepl("terrestrial", hab_gen) |
          grepl("cave", hab_gen))
-sum(eterr2$birds)/nrow(eterr2)
-sum(eterr2$mammals)/nrow(eterr2)
-sum(eterr2$reptiles)/nrow(eterr2)
-sum(eterr2$amphibians)/nrow(eterr2)
-sum(eterr2$invertebrates)/nrow(eterr2)
-sum(eterr2$fish)/nrow(eterr2)
-sum(eterr2$prokaryotes)/nrow(eterr2)
-sum(eterr2$fungi)/nrow(eterr2)
-sum(eterr2$protists)/nrow(eterr2)
+100*sum(eterr2$birds)/nrow(eterr2)
+100*sum(eterr2$mammals)/nrow(eterr2)
+100*sum(eterr2$reptiles)/nrow(eterr2)
+100*sum(eterr2$amphibians)/nrow(eterr2)
+100*sum(eterr2$invertebrates)/nrow(eterr2)
+100*sum(eterr2$fish)/nrow(eterr2)
+100*sum(eterr2$prokaryotes)/nrow(eterr2)
+100*sum(eterr2$fungi)/nrow(eterr2)
+100*sum(eterr2$protists)/nrow(eterr2)
+100*sum(eterr2$plants)/nrow(eterr2)
 
 # terrestrial eDNA study substrates
 table(eterr2$substrate)
 
-# how many studies were in each impact category
+# how many studies were in each method category
 e %>% 
-  group_by(impact) %>%
+  group_by(method) %>%
   tally()
 
 # how many studies that involved forest were in each impact category
 e %>% 
   filter(grepl("forest", hab_gen)) %>%
   group_by(impact) %>%
-  tally()
+  tally() %>%
+  mutate(pct = 100*n/68)
 
 # how many forest studies in each substrate category 
 e %>% 
@@ -429,19 +460,23 @@ e %>%
 
 # where are eDNA studies
 table(e$region)
-table(e$country_area)
+100*table(e$region)/324
+table(e$country_area) # 29 USA + 17 Canada + 1 Greenland are included in North America
 et <- e %>% filter(trop_sub == 1)
 etemp <- e %>% filter(trop_sub == 0)
-table(et$region)/nrow(et)
-table(etemp$region)/nrow(etemp)
-table(etemp$country_area)/nrow(etemp)
+100*table(et$region)/nrow(e)
+table(et$region)
+sum(table(et$region))
+100*table(etemp$region)/nrow(e)
+table(etemp$region)
+sum(table(etemp$region))
+table(etemp$country_area)/nrow(e)
 
 # average sample size of eDNA studies
-mean(e$numsamp, na.rm = T)
-sd(e$numsamp, na.rm = T)
-summary(e$numsamp, na.rm = T)
-sd(e$numsamp, na.rm = T) / sqrt(length(e[!is.na(e$numsamp),]$numsamp))
-mean(e$numsamp, na.rm = T)
+mean(as.numeric(e$numsamp), na.rm = T)
+sd(as.numeric(e$numsamp), na.rm = T)
+summary(as.numeric(e$numsamp), na.rm = T)
+sd(as.numeric(e$numsamp), na.rm = T) / sqrt(length(e[!is.na(e$numsamp),]$numsamp))
 
 
 ```
@@ -455,8 +490,13 @@ library(rnaturalearth)
 world <- rnaturalearth::ne_countries(returnclass = "sf")
 plot(world)
 
+p_pts <- pall %>%
+  filter(!is.na(lat_approx),
+         !is.na(lon_approx),
+         lat_approx != "NA")
+
 # summarize count of projects by country, fixing name of Tanzania
-pcountry <- p %>%
+pcountry <- pall %>%
   group_by(country_area) %>%
   summarize(count = length(country_area)) %>%
   mutate(sovereignt = case_when(country_area == "Tanzania" ~ "United Republic of Tanzania",
@@ -469,12 +509,13 @@ worldp <- world %>%
 test = worldp %>% filter(!is.na(count))
 
 # make lat/lon into sf object
-psf <- st_as_sf(p[,c("lon_approx", "lat_approx")],
+psf <- st_as_sf(p_pts[,c("lon_approx", "lat_approx")],
                 coords = c("lon_approx", "lat_approx"))
 
 # plot
-psf <- p %>%
-  filter(!is.na(lat_approx)) %>%
+psf <- pall %>%
+  filter(!is.na(lat_approx),
+         lat_approx != "NA") %>%
   select(ID, lat_approx, lon_approx) %>%
   st_as_sf(coords = c("lon_approx", "lat_approx"),
            crs = 4326)
@@ -492,27 +533,18 @@ ggplot +
   labs(x = "", y = "", fill = "No.\nprojects") +  
 coord_sf(crs = st_crs("ESRI:54030"))
 
-ggsave("figures/fig_map_projects3.png", width = 6, height = 6, dpi =400)
+ggsave("figures/fig_map_projects4b.png", width = 6, height = 6, dpi = 400)
 
-# summarize number of CCB projects at different latitudes
-sum(abs(as.numeric(p$lat_approx))<23.5, na.rm = T) # 33
-sum(abs(as.numeric(p$lat_approx))>23.5, na.rm = T) # 34
-sum(abs(as.numeric(p$lat_approx))<35, na.rm = T) # 54
-sum(abs(as.numeric(p$lat_approx))>35, na.rm = T) # 13
-
-sum(abs(as.numeric(p$lat_approx))<35, na.rm = T) # 54
-sum(abs(as.numeric(p$lat_approx))>35, na.rm = T) # 13
+# summarize number of projects at different latitudes
+sum(abs(as.numeric(pall$lat_approx))<23.5, na.rm = T) # 40
+sum(abs(as.numeric(pall$lat_approx))>23.5, na.rm = T) # 38
+sum(abs(as.numeric(pall$lat_approx))<35, na.rm = T) # 63
+sum(abs(as.numeric(pall$lat_approx))>35, na.rm = T) # 15
 
 
 sum(pall$`trop-subtrop`==1, na.rm = T) # 85
 sum(!is.na(pall$`trop-subtrop`)) # 100
 mean(abs(as.numeric(pall[pall$`trop-subtrop`!=1,]$lat_approx)), na.rm = T)
-
-sum(!is.na(p$lat_approx)) # 67
-48/56
-8/56
-
-
 
 
 ```
@@ -554,7 +586,8 @@ ecountry[ecountry$admin %notin% test$admin,]$admin
 
 # plot
 esf <- e1 %>%
-  filter(!is.na(lat_approx)) %>%
+  filter(!is.na(lat_approx),
+         lat_approx != "NA") %>%
   select(paperid, lat_approx, lon_approx) %>%
   st_as_sf(coords = c("lon_approx", "lat_approx"),
            crs = 4326)
@@ -572,7 +605,7 @@ ggplot +
   labs(x = "", y = "", fill = "No.\nstudies") +  
 coord_sf(crs = st_crs("ESRI:54030"))
 
-ggsave("figures/fig_map_eDNAstudies.png", width = 6, height = 6, dpi =400)
+ggsave("figures/fig_map_eDNAstudies2.png", width = 6, height = 6, dpi =400)
 
 # summarize number of projects at different latitudes
 sum(abs(e1$lat_approx)<=23.5, na.rm = T) # 18
@@ -615,5 +648,133 @@ pall %>%
             n = length(area_ha),
             per = sum/n) %>%
   mutate(tot = per*c(20,50,1,29))
+```
+
+# methods subplots for fig 1
+```{r}
+# 
+table(pall$animal_mon)/length(pall$animal_mon)
+0.11965812     +      0.05128205     +      0.56410256 # 0.735
+table(pall$`sample_based_n_provided?`) / nrow(pall)
+tot_samps <- as.numeric(p1$camtrap) + as.numeric(p1$traps) + as.numeric(p1$formal_obs)
+tot_samps <- tot_samps[tot_samps > 0]
+tot_samps <- tot_samps[!is.na(tot_samps)]
+sum(tot_samps >10) / nrow(pall)
+
+sum(!is.na(as.numeric(e$numsamp)))
+321/324
+tot_e_samps <- as.numeric(e[!is.na(as.numeric(e$numsamp)),]$numsamp)
+sum(tot_e_samps >10) / 324
+
+
+fco_dat <- data.frame(label = rep(c(
+                                "Replicated\nsurvey design",
+                                "Report\nsample size",
+                                "Sample\nsize >10",
+                                "Data\navailable"), 2),
+                      type = c(rep("FCO", 4), rep("eDNA", 4)),
+                      val = c(56, 40, 24.7, 4, 99.7, 99, 94, 75),
+                      order = c(1, 2, 3, 4, 5, 6, 7, 8)) %>%
+  mutate(label = forcats::fct_reorder(label, order, .desc = T))
+
+
+fco_dat %>%
+  filter(type == "FCO") %>%
+ggplot() +
+  geom_col(aes(x = val, y = label), fill = "black") +
+  scale_x_continuous(limit = c(0,100)) +
+  theme_bw() +
+  theme(text = element_text(size = 26)) +
+  labs(x = "% of projects", y = "")
+
+ggsave("figures/fig1_methods_fco_20240216.png", width = 7, height = 5, dpi =600)
+
+# Fig 1 panel - Rigor & Transparency (eDNA)
+fco_dat %>%
+  filter(type == "eDNA") %>%
+ggplot() +
+  geom_col(aes(x = val, y = label), fill = "black") +
+  scale_x_continuous(limit = c(0,100)) +
+  theme_bw() +
+  theme(text = element_text(size = 26)) +
+  labs(x = "% of studies", y = "")
+
+ggsave("figures/fig1_methods_edna_20240216.png", width = 7, height = 5, dpi =600)
+
+```
+# compare rigor of projects in 3 organizations
+```{r}
+# 
+p_ccb <- pall %>% filter(reg == "CCB")
+p_pv <- pall %>% filter(reg == "PV")
+p_gs <- pall %>% filter(reg == "GS")
+p1_ccb <- p1 %>% filter(reg == "CCB")
+p1_pv <- p1 %>% filter(reg == "PV")
+p1_gs <- p1 %>% filter(reg == "GS")
+
+# calculate methodology stats for CCB projects
+table(p_ccb$animal_mon)/length(p_ccb$animal_mon) # 85% with any animal mon, 76.25% with replicated
+table(p_ccb$`sample_based_n_provided?`) / nrow(p_ccb) # 57.5% have sample size
+tot_samps_ccb <- as.numeric(p1_ccb$camtrap) + as.numeric(p1_ccb$traps) + as.numeric(p1_ccb$formal_obs)
+tot_samps_ccb <- tot_samps_ccb[tot_samps_ccb > 0]
+tot_samps_ccb <- tot_samps_ccb[!is.na(tot_samps_ccb)]
+sum(tot_samps_ccb >10) / nrow(p1_ccb) # 35% have n>10
+# 6.25% have data available
+
+# calculate methodology stats for PlanVivo projects
+table(p_pv$animal_mon)/length(p_pv$animal_mon) # 71.4% with any animal mon, 21.4% with replicated (additional 21.4 with methods unknown)
+table(p_pv$`sample_based_n_provided?`) / nrow(p_pv) # 7% have sample size
+tot_samps_pv <- as.numeric(p1_pv$camtrap) + as.numeric(p1_pv$traps) + as.numeric(p1_pv$formal_obs)
+tot_samps_pv <- tot_samps_pv[tot_samps_pv > 0]
+tot_samps_pv <- tot_samps_pv[!is.na(tot_samps_pv)]
+sum(tot_samps_pv >10) / nrow(p1_pv) # 7% have n>10
+# 0% have data available
+
+# calculate methodology stats for GSIR projects
+table(p_gs$animal_mon)/length(p_gs$animal_mon) # 25% with any animal mon, 10% with replicated (additional 15% with methods unknown)
+table(p_gs$`sample_based_n_provided?`) / nrow(p_gs) # 0% have sample size
+# 0% have n > 10
+# 0% have data available
+
+
+fco_org_dat <- data.frame(label = rep(c(
+                                "Any animal\nmonitoring",
+                                "Replicated\nsurvey design",
+                                "Sample size\nreported",
+                                "Sample\nsize >10",
+                                "Data\navailable"), 3),
+                      type = c(rep("CCB", 5), rep("PlanVivo", 5), rep("Gold Standard", 5)),
+                      val = c(85, 76.25, 57.5, 35, 6.25, 
+                              71.4, 21.4, 7, 7, 0,
+                              25, 10, 0, 0, 0),
+                      order = 1:15,
+                      order2 = c(rep(1,5), rep(2,5), rep(3,5))) %>%
+  mutate(label = forcats::fct_reorder(label, order, .desc = T),
+         type = forcats::fct_reorder(type, order2, .desc = F))
+
+fco_org_dat %>%
+ggplot() +
+  geom_col(aes(x = val, y = label)) +
+  facet_wrap(~type) +
+  scale_x_continuous(limit = c(0,100)) +
+  theme_bw() +
+  theme(text = element_text(size = 16)) +
+  labs(x = "% of projects", y = "")
+
+ggsave("figures/fig2_methods_fco_by_org_20240216d.png", width = 9, height = 4, dpi =600)
+
+# Fig 1 panel - Rigor & Transparency (eDNA)
+fco_dat %>%
+  filter(type == "eDNA") %>%
+ggplot() +
+  geom_col(aes(x = val, y = label), fill = "black") +
+  scale_x_continuous(limit = c(0,100)) +
+  theme_bw() +
+  theme(text = element_text(size = 26)) +
+  labs(x = "% of studies", y = "")
+
+ggsave("figures/fig1_methods_edna_20240216.png", width = 7, height = 5, dpi =600)
+
+
 ```
 
